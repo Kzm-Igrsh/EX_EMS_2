@@ -24,20 +24,26 @@ const int CTRL_VALUE = 20;
 
 // セットアップ用変数
 bool setupComplete = false;
-int userChopWeak = 0;       // Weak初期値を0に変更
-int userChopStrong = 0;     // Strong初期値を0に変更
-bool testingWeak = false;   // Weakテスト中フラグ
-bool testingStrong = false; // Strongテスト中フラグ
+int userChopWeak = 0;
+int userChopStrong = 0;
+bool testingWeak = false;
+bool testingStrong = false;
 
-// メイン動作用変数
-enum PortPos { PORT_C, PORT_D, PORT_E };
-PortPos currentPort = PORT_C;
-bool stimActive = false;
-int chopValue = 50;
+// パターン実行用変数
+bool patternRunning = false;
+int currentPatternStep = 0;
+unsigned long patternStepStartTime = 0;
+
+// 固定パターン順序
+const char* patternSequence[6] = {
+  "C-weak", "C-strong",
+  "D-weak", "D-strong",
+  "E-weak", "E-strong"
+};
 
 // ========== 関数の前方宣言 ==========
-void drawUI();
 void drawSetupUI();
+void drawPatternUI();
 
 int dutyFromPercent(int v) {
   return map(v, 0, 100, 0, (1 << PWM_RES) - 1);
@@ -50,7 +56,6 @@ void stopAllStimulus() {
   ledcWrite(PWM_CH_D_CHOP, 0);
   ledcWrite(PWM_CH_E_CTRL, 0);
   ledcWrite(PWM_CH_E_CHOP, 0);
-  stimActive = false;
   testingWeak = false;
   testingStrong = false;
 }
@@ -66,27 +71,30 @@ void applyToPortC(int chop) {
   ledcWrite(PWM_CH_C_CHOP, chopDuty);
 }
 
-void applyStimulus() {
+// パターン文字列から刺激を適用
+void applyPattern(const char* pattern) {
   stopAllStimulus();
-
+  
+  char port = pattern[0];  // 'C', 'D', 'E'
+  bool isStrong = (strstr(pattern, "strong") != NULL);
+  
+  int chop = isStrong ? userChopStrong : userChopWeak;
   int ctrlDuty = dutyFromPercent(CTRL_VALUE);
-  int chopDuty = dutyFromPercent(chopValue);
-
-  if (currentPort == PORT_C) {
+  int chopDuty = dutyFromPercent(chop);
+  
+  if (port == 'C') {
     ledcWrite(PWM_CH_C_CTRL, ctrlDuty);
     ledcWrite(PWM_CH_C_CHOP, chopDuty);
-  } else if (currentPort == PORT_D) {
+  } else if (port == 'D') {
     ledcWrite(PWM_CH_D_CTRL, ctrlDuty);
     ledcWrite(PWM_CH_D_CHOP, chopDuty);
-  } else {
+  } else if (port == 'E') {
     ledcWrite(PWM_CH_E_CTRL, ctrlDuty);
     ledcWrite(PWM_CH_E_CHOP, chopDuty);
   }
-
-  stimActive = true;
 }
 
-// ========== セットアップ画面（横並びレイアウト） ==========
+// ========== セットアップ画面 ==========
 void drawSetupUI() {
   M5.Display.clear(BLACK);
   M5.Display.setTextColor(WHITE);
@@ -94,12 +102,10 @@ void drawSetupUI() {
   M5.Display.setCursor(20, 10);
   M5.Display.printf("Setup Port C G%d,%d", PWM0_PIN_C, PWM1_PIN_C);
 
-  // Weak調整エリア
   M5.Display.setTextSize(2);
   M5.Display.setCursor(10, 45);
   M5.Display.println("Weak:");
 
-  // Weak調整ボタン（-/+）
   M5.Display.fillRect(10, 70, 40, 30, RED);
   M5.Display.setTextColor(WHITE);
   M5.Display.setTextSize(2);
@@ -110,25 +116,21 @@ void drawSetupUI() {
   M5.Display.setCursor(70, 75);
   M5.Display.println("+");
 
-  // Weak数値表示
   M5.Display.setTextSize(3);
   M5.Display.setCursor(110, 73);
   M5.Display.printf("%3d", userChopWeak);
 
-  // Weakテストボタン（右側に配置）
   M5.Display.fillRect(180, 70, 130, 30, testingWeak ? ORANGE : BLUE);
   M5.Display.setTextColor(BLACK);
   M5.Display.setTextSize(2);
   M5.Display.setCursor(188, 75);
   M5.Display.println(testingWeak ? "Testing" : "Test Weak");
 
-  // Strong調整エリア
   M5.Display.setTextColor(WHITE);
   M5.Display.setTextSize(2);
   M5.Display.setCursor(10, 115);
   M5.Display.println("Strong:");
 
-  // Strong調整ボタン（-/+）
   M5.Display.fillRect(10, 140, 40, 30, RED);
   M5.Display.setTextSize(2);
   M5.Display.setCursor(20, 145);
@@ -138,19 +140,16 @@ void drawSetupUI() {
   M5.Display.setCursor(70, 145);
   M5.Display.println("+");
 
-  // Strong数値表示
   M5.Display.setTextSize(3);
   M5.Display.setCursor(110, 143);
   M5.Display.printf("%3d", userChopStrong);
 
-  // Strongテストボタン（右側に配置）
   M5.Display.fillRect(180, 140, 130, 30, testingStrong ? ORANGE : BLUE);
   M5.Display.setTextColor(BLACK);
   M5.Display.setTextSize(2);
   M5.Display.setCursor(180, 145);
   M5.Display.println(testingStrong ? "Testing" : "Test Strong");
 
-  // DONEボタン（十分な間隔を確保）
   M5.Display.fillRect(85, 200, 150, 35, YELLOW);
   M5.Display.setTextColor(BLACK);
   M5.Display.setTextSize(3);
@@ -166,7 +165,6 @@ void handleSetupTouch() {
   int y = t.y;
   bool redraw = false;
 
-  // Weak調整（-/+ボタン）
   if (y >= 70 && y <= 100) {
     if (x >= 10 && x <= 50) {
       userChopWeak -= 5;
@@ -181,7 +179,6 @@ void handleSetupTouch() {
     }
   }
 
-  // Weakテストボタン
   if (y >= 70 && y <= 100 && x >= 180 && x <= 310) {
     if (testingWeak) {
       stopAllStimulus();
@@ -193,7 +190,6 @@ void handleSetupTouch() {
     redraw = true;
   }
 
-  // Strong調整（-/+ボタン）
   if (y >= 140 && y <= 170) {
     if (x >= 10 && x <= 50) {
       userChopStrong -= 5;
@@ -208,7 +204,6 @@ void handleSetupTouch() {
     }
   }
 
-  // Strongテストボタン
   if (y >= 140 && y <= 170 && x >= 180 && x <= 310) {
     if (testingStrong) {
       stopAllStimulus();
@@ -220,167 +215,128 @@ void handleSetupTouch() {
     redraw = true;
   }
 
-  // DONEボタン
   if (y >= 200 && y <= 235 && x >= 85 && x <= 235) {
     stopAllStimulus();
     setupComplete = true;
-    chopValue = userChopWeak;  // 初期値をWeakに設定
-    drawUI();
+    drawPatternUI();
     return;
   }
 
   if (redraw) drawSetupUI();
 }
 
-// ========== メイン画面（コンパクト版） ==========
-void drawUI() {
+// ========== パターン実行画面 ==========
+void drawPatternUI() {
   M5.Display.clear(BLACK);
-
   M5.Display.setTextColor(WHITE);
   M5.Display.setTextSize(2);
-  M5.Display.setCursor(60, 5);
-  M5.Display.println("EMS C/D/E");
+  M5.Display.setCursor(40, 10);
+  M5.Display.println("Pattern Ready");
 
   M5.Display.setTextSize(1);
-  M5.Display.setCursor(5, 25);
-  M5.Display.printf("C:G%d,%d D:G%d,%d E:G%d,%d",
-                    PWM0_PIN_C, PWM1_PIN_C,
-                    PWM0_PIN_D, PWM1_PIN_D,
-                    PWM0_PIN_E, PWM1_PIN_E);
+  M5.Display.setCursor(20, 40);
+  M5.Display.println("C-weak > C-strong > D-weak");
+  M5.Display.setCursor(20, 55);
+  M5.Display.println("> D-strong > E-weak > E-strong");
 
-  // ポート選択ボタン
-  M5.Display.setTextSize(1);
-  M5.Display.setCursor(10, 42);
-  M5.Display.println("Port:");
-
-  int ySel = 55;
-  int hSel = 35;
-  int wSel = 75;
-
-  M5.Display.fillRect(10, ySel, wSel, hSel, (currentPort == PORT_C) ? GREEN : DARKGREY);
-  M5.Display.setTextColor(BLACK);
   M5.Display.setTextSize(2);
-  M5.Display.setCursor(38, ySel + 8);
-  M5.Display.println("C");
+  M5.Display.setCursor(20, 80);
+  M5.Display.printf("Weak:  %d", userChopWeak);
+  M5.Display.setCursor(20, 105);
+  M5.Display.printf("Strong:%d", userChopStrong);
 
-  M5.Display.fillRect(120, ySel, wSel, hSel, (currentPort == PORT_D) ? GREEN : DARKGREY);
-  M5.Display.setCursor(148, ySel + 8);
-  M5.Display.println("D");
+  if (!patternRunning) {
+    M5.Display.fillRect(70, 140, 180, 40, GREEN);
+    M5.Display.setTextColor(BLACK);
+    M5.Display.setTextSize(3);
+    M5.Display.setCursor(100, 150);
+    M5.Display.println("START");
+  } else {
+    M5.Display.fillRect(70, 140, 180, 40, RED);
+    M5.Display.setTextColor(BLACK);
+    M5.Display.setTextSize(3);
+    M5.Display.setCursor(105, 150);
+    M5.Display.println("STOP");
+  }
 
-  M5.Display.fillRect(230, ySel, wSel, hSel, (currentPort == PORT_E) ? GREEN : DARKGREY);
-  M5.Display.setCursor(258, ySel + 8);
-  M5.Display.println("E");
-
-  // Chop調整
-  M5.Display.setTextColor(WHITE);
-  M5.Display.setTextSize(1);
-  M5.Display.setCursor(10, 95);
-  M5.Display.println("Chop:");
-
-  int yChopBtn = 108;
-  int hChopBtn = 30;
-  int wChopBtn = 60;
-
-  M5.Display.fillRect(10, yChopBtn, wChopBtn, hChopBtn, DARKGREY);
-  M5.Display.setTextColor(BLACK);
-  M5.Display.setTextSize(2);
-  M5.Display.setCursor(30, yChopBtn + 5);
-  M5.Display.println("-");
-
-  M5.Display.fillRect(250, yChopBtn, wChopBtn, hChopBtn, DARKGREY);
-  M5.Display.setCursor(270, yChopBtn + 5);
-  M5.Display.println("+");
-
-  M5.Display.setTextColor(WHITE);
-  M5.Display.setTextSize(3);
-  M5.Display.setCursor(135, yChopBtn + 2);
-  M5.Display.printf("%3d", chopValue);
-
-  // Output ON/OFF
-  M5.Display.setTextSize(1);
-  M5.Display.setTextColor(WHITE);
-  M5.Display.setCursor(10, 145);
-  M5.Display.println("Output:");
-
-  int yOut = 158;
-  int hOut = 28;
-  int wOut = 115;
-
-  M5.Display.fillRect(10, yOut, wOut, hOut, stimActive ? DARKGREY : BLUE);
-  M5.Display.setTextColor(BLACK);
-  M5.Display.setTextSize(2);
-  M5.Display.setCursor(45, yOut + 5);
-  M5.Display.println("ON");
-
-  M5.Display.fillRect(195, yOut, wOut, hOut, stimActive ? RED : DARKGREY);
-  M5.Display.setCursor(225, yOut + 5);
-  M5.Display.println("OFF");
-
-  // ステータス表示
-  M5.Display.setTextSize(1);
-  M5.Display.setTextColor(WHITE);
-  M5.Display.setCursor(5, 195);
-  M5.Display.printf("Ctrl=%d%% Chop=%d%%", CTRL_VALUE, chopValue);
-  
-  M5.Display.setCursor(5, 210);
-  M5.Display.printf("Status: %s", stimActive ? "ON" : "OFF");
-  
-  M5.Display.setCursor(5, 225);
-  const char* portName = (currentPort == PORT_C) ? "C" : (currentPort == PORT_D) ? "D" : "E";
-  M5.Display.printf("Active Port: %s", portName);
+  // 現在のステータス表示
+  if (patternRunning && currentPatternStep < 6) {
+    M5.Display.setTextColor(WHITE);
+    M5.Display.setTextSize(2);
+    M5.Display.setCursor(20, 195);
+    M5.Display.printf("Step %d/6: %s", 
+                      currentPatternStep + 1,
+                      patternSequence[currentPatternStep]);
+    
+    unsigned long elapsed = millis() - patternStepStartTime;
+    unsigned long remaining = (3000 - elapsed) / 1000;
+    M5.Display.setCursor(20, 220);
+    M5.Display.printf("Time: %lu sec", remaining);
+  } else if (patternRunning && currentPatternStep >= 6) {
+    M5.Display.setTextColor(GREEN);
+    M5.Display.setTextSize(3);
+    M5.Display.setCursor(60, 205);
+    M5.Display.println("Complete!");
+  }
 }
 
-void handleTouch() {
+void handlePatternTouch() {
   auto t = M5.Touch.getDetail();
   if (!t.wasPressed()) return;
 
   int x = t.x;
   int y = t.y;
-  bool redraw = false;
 
-  // ポート選択
-  int ySel = 55;
-  int hSel = 35;
-
-  if (y >= ySel && y <= ySel + hSel) {
-    if (x >= 10 && x <= 85)        { currentPort = PORT_C; redraw = true; }
-    else if (x >= 120 && x <= 195) { currentPort = PORT_D; redraw = true; }
-    else if (x >= 230 && x <= 305) { currentPort = PORT_E; redraw = true; }
-  }
-
-  // Chop調整
-  int yChopBtn = 108;
-  int hChopBtn = 30;
-
-  if (y >= yChopBtn && y <= yChopBtn + hChopBtn) {
-    if (x >= 10 && x <= 70) {
-      chopValue -= 5;
-      if (chopValue < 0) chopValue = 0;
-      if (stimActive) applyStimulus();
-      redraw = true;
-    } else if (x >= 250 && x <= 310) {
-      chopValue += 5;
-      if (chopValue > 100) chopValue = 100;
-      if (stimActive) applyStimulus();
-      redraw = true;
-    }
-  }
-
-  // Output ON/OFF
-  int yOut = 158;
-  int hOut = 28;
-
-  if (y >= yOut && y <= yOut + hOut) {
-    if (x >= 10 && x <= 125) {
-      applyStimulus();
-      redraw = true;
-    } else if (x >= 195 && x <= 310) {
+  // START/STOPボタン
+  if (y >= 140 && y <= 180 && x >= 70 && x <= 250) {
+    if (!patternRunning) {
+      // パターン開始
+      patternRunning = true;
+      currentPatternStep = 0;
+      patternStepStartTime = millis();
+      
+      // 最初のパターンを適用
+      applyPattern(patternSequence[0]);
+      
+    } else {
+      // パターン停止
+      patternRunning = false;
+      currentPatternStep = 0;
       stopAllStimulus();
-      redraw = true;
     }
+    drawPatternUI();
+  }
+}
+
+void updatePattern() {
+  if (!patternRunning || currentPatternStep >= 6) {
+    if (currentPatternStep >= 6) {
+      // 全パターン完了
+      patternRunning = false;
+      currentPatternStep = 0;
+      stopAllStimulus();
+      drawPatternUI();
+    }
+    return;
   }
 
-  if (redraw) drawUI();
+  unsigned long elapsed = millis() - patternStepStartTime;
+  
+  if (elapsed >= 3000) {  // 固定3秒（後で変更可能）
+    // 次のステップへ
+    currentPatternStep++;
+    
+    if (currentPatternStep < 6) {
+      // 次のパターンを適用
+      patternStepStartTime = millis();
+      applyPattern(patternSequence[currentPatternStep]);
+      drawPatternUI();
+    } else {
+      // 全パターン完了
+      stopAllStimulus();
+      drawPatternUI();
+    }
+  }
 }
 
 void setup() {
@@ -413,7 +369,6 @@ void setup() {
   ledcAttachPin(PWM1_PIN_E, PWM_CH_E_CHOP);
   ledcWrite(PWM_CH_E_CHOP, 0);
 
-  // セットアップ画面から開始
   drawSetupUI();
 }
 
@@ -423,7 +378,8 @@ void loop() {
   if (!setupComplete) {
     handleSetupTouch();
   } else {
-    handleTouch();
+    handlePatternTouch();
+    updatePattern();
   }
   
   delay(10);
