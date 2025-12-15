@@ -64,6 +64,11 @@ void stopAllStimulus() {
 void applyToPortC(int chop) {
   stopAllStimulus();
   
+  // Chopが0の場合は何も出力しない
+  if (chop == 0) {
+    return;
+  }
+  
   int ctrlDuty = dutyFromPercent(CTRL_VALUE);
   int chopDuty = dutyFromPercent(chop);
   
@@ -79,6 +84,12 @@ void applyPattern(const char* pattern) {
   bool isStrong = (strstr(pattern, "strong") != NULL);
   
   int chop = isStrong ? userChopStrong : userChopWeak;
+  
+  // Chopが0の場合は何も出力しない
+  if (chop == 0) {
+    return;
+  }
+  
   int ctrlDuty = dutyFromPercent(CTRL_VALUE);
   int chopDuty = dutyFromPercent(chop);
   
