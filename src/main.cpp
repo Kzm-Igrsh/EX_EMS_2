@@ -33,13 +33,43 @@ bool testingStrong = false;
 bool patternRunning = false;
 int currentPatternStep = 0;
 unsigned long patternStepStartTime = 0;
+bool inInterval = false;
 
-// 固定パターン順序
-const char* patternSequence[6] = {
-  "C-weak", "C-strong",
-  "D-weak", "D-strong",
-  "E-weak", "E-strong"
+// 20パターンの固定順序（連続パターンあり）
+// 同じ場所・違う強度の連続: C-weak→C-strong (1-2), E-weak→E-strong (13-14)
+// 同じ場所・同じ強度の連続: D-weak→D-weak (8-9), E-strong→E-strong (10-11)
+const char* patternSequence[20] = {
+  "C-weak", "C-strong",     // 1-2: 同じ場所、違う強度
+  "E-weak", "D-strong", 
+  "C-weak", "E-strong", 
+  "D-weak", 
+  "D-weak", "D-weak",       // 8-9: 同じ場所、同じ強度
+  "E-strong", "E-strong",   // 10-11: 同じ場所、同じ強度
+  "C-strong", 
+  "E-weak", "E-strong",     // 13-14: 同じ場所、違う強度
+  "D-weak", 
+  "C-weak", "C-weak",       // 16-17: 同じ場所、同じ強度
+  "D-strong", 
+  "C-strong"
 };
+
+// 20パターンの動作時間（2500-3500ms）
+const int patternDurations[20] = {
+  3200, 2700, 3400, 2500, 3100, 
+  2900, 3500, 2600, 3300, 2800,
+  3100, 2700, 3400, 2900, 3200,
+  2600, 3500, 2800, 3000, 3300
+};
+
+// 20パターンのインターバル（0-500ms）
+const int patternIntervals[20] = {
+  400, 250, 150, 350, 50, 
+  450, 200, 300, 0, 100,
+  250, 400, 150, 300, 100,
+  450, 50, 350, 200, 0
+};
+
+const int totalTrials = 20;
 
 // ========== 関数の前方宣言 ==========
 void drawSetupUI();
@@ -241,52 +271,72 @@ void drawPatternUI() {
   M5.Display.clear(BLACK);
   M5.Display.setTextColor(WHITE);
   M5.Display.setTextSize(2);
-  M5.Display.setCursor(40, 10);
-  M5.Display.println("Pattern Ready");
+  M5.Display.setCursor(60, 10);
+  M5.Display.println("20 Trials");
 
   M5.Display.setTextSize(1);
-  M5.Display.setCursor(20, 40);
-  M5.Display.println("C-weak > C-strong > D-weak");
-  M5.Display.setCursor(20, 55);
-  M5.Display.println("> D-strong > E-weak > E-strong");
+  M5.Display.setCursor(10, 40);
+  M5.Display.println("Pattern with consecutive same/diff");
+  M5.Display.setCursor(10, 55);
+  M5.Display.println("Duration: 2.5-3.5s, Interval: 0-0.5s");
 
   M5.Display.setTextSize(2);
-  M5.Display.setCursor(20, 80);
+  M5.Display.setCursor(20, 75);
   M5.Display.printf("Weak:  %d", userChopWeak);
-  M5.Display.setCursor(20, 105);
+  M5.Display.setCursor(20, 95);
   M5.Display.printf("Strong:%d", userChopStrong);
 
   if (!patternRunning) {
-    M5.Display.fillRect(70, 140, 180, 40, GREEN);
+    M5.Display.fillRect(70, 125, 180, 40, GREEN);
     M5.Display.setTextColor(BLACK);
     M5.Display.setTextSize(3);
-    M5.Display.setCursor(100, 150);
+    M5.Display.setCursor(100, 135);
     M5.Display.println("START");
   } else {
-    M5.Display.fillRect(70, 140, 180, 40, RED);
+    M5.Display.fillRect(70, 125, 180, 40, RED);
     M5.Display.setTextColor(BLACK);
     M5.Display.setTextSize(3);
-    M5.Display.setCursor(105, 150);
+    M5.Display.setCursor(105, 135);
     M5.Display.println("STOP");
   }
 
   // 現在のステータス表示
-  if (patternRunning && currentPatternStep < 6) {
+  if (patternRunning && currentPatternStep < totalTrials) {
     M5.Display.setTextColor(WHITE);
     M5.Display.setTextSize(2);
-    M5.Display.setCursor(20, 195);
-    M5.Display.printf("Step %d/6: %s", 
-                      currentPatternStep + 1,
-                      patternSequence[currentPatternStep]);
+    M5.Display.setCursor(15, 175);
+    
+    if (inInterval) {
+      M5.Display.println("Interval...");
+    } else {
+      M5.Display.printf("Trial %d/%d: %s", 
+                        currentPatternStep + 1,
+                        totalTrials,
+                        patternSequence[currentPatternStep]);
+    }
     
     unsigned long elapsed = millis() - patternStepStartTime;
-    unsigned long remaining = (3000 - elapsed) / 1000;
-    M5.Display.setCursor(20, 220);
-    M5.Display.printf("Time: %lu sec", remaining);
-  } else if (patternRunning && currentPatternStep >= 6) {
+    unsigned long remaining;
+    
+    if (inInterval) {
+      remaining = (patternIntervals[currentPatternStep] - elapsed);
+    } else {
+      remaining = (patternDurations[currentPatternStep] - elapsed);
+    }
+    
+    M5.Display.setCursor(15, 200);
+    M5.Display.printf("Time: %.1f sec", remaining / 1000.0);
+    
+    M5.Display.setTextSize(1);
+    M5.Display.setCursor(15, 220);
+    M5.Display.printf("Dur:%dms Int:%dms", 
+                      patternDurations[currentPatternStep],
+                      patternIntervals[currentPatternStep]);
+    
+  } else if (patternRunning && currentPatternStep >= totalTrials) {
     M5.Display.setTextColor(GREEN);
     M5.Display.setTextSize(3);
-    M5.Display.setCursor(60, 205);
+    M5.Display.setCursor(60, 185);
     M5.Display.println("Complete!");
   }
 }
@@ -299,12 +349,13 @@ void handlePatternTouch() {
   int y = t.y;
 
   // START/STOPボタン
-  if (y >= 140 && y <= 180 && x >= 70 && x <= 250) {
+  if (y >= 125 && y <= 165 && x >= 70 && x <= 250) {
     if (!patternRunning) {
       // パターン開始
       patternRunning = true;
       currentPatternStep = 0;
       patternStepStartTime = millis();
+      inInterval = false;
       
       // 最初のパターンを適用
       applyPattern(patternSequence[0]);
@@ -313,6 +364,7 @@ void handlePatternTouch() {
       // パターン停止
       patternRunning = false;
       currentPatternStep = 0;
+      inInterval = false;
       stopAllStimulus();
     }
     drawPatternUI();
@@ -320,11 +372,12 @@ void handlePatternTouch() {
 }
 
 void updatePattern() {
-  if (!patternRunning || currentPatternStep >= 6) {
-    if (currentPatternStep >= 6) {
-      // 全パターン完了
+  if (!patternRunning || currentPatternStep >= totalTrials) {
+    if (currentPatternStep >= totalTrials) {
+      // 全トライアル完了
       patternRunning = false;
       currentPatternStep = 0;
+      inInterval = false;
       stopAllStimulus();
       drawPatternUI();
     }
@@ -333,19 +386,32 @@ void updatePattern() {
 
   unsigned long elapsed = millis() - patternStepStartTime;
   
-  if (elapsed >= 3000) {  // 固定3秒（後で変更可能）
-    // 次のステップへ
-    currentPatternStep++;
-    
-    if (currentPatternStep < 6) {
-      // 次のパターンを適用
-      patternStepStartTime = millis();
-      applyPattern(patternSequence[currentPatternStep]);
-      drawPatternUI();
-    } else {
-      // 全パターン完了
+  if (!inInterval) {
+    // 動作時間中
+    if (elapsed >= patternDurations[currentPatternStep]) {
+      // 動作終了、インターバルへ移行
       stopAllStimulus();
+      inInterval = true;
+      patternStepStartTime = millis();
       drawPatternUI();
+    }
+  } else {
+    // インターバル中
+    if (elapsed >= patternIntervals[currentPatternStep]) {
+      // インターバル終了、次のトライアルへ
+      currentPatternStep++;
+      inInterval = false;
+      
+      if (currentPatternStep < totalTrials) {
+        // 次のパターンを適用
+        patternStepStartTime = millis();
+        applyPattern(patternSequence[currentPatternStep]);
+        drawPatternUI();
+      } else {
+        // 全トライアル完了
+        stopAllStimulus();
+        drawPatternUI();
+      }
     }
   }
 }
