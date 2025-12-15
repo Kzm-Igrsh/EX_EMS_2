@@ -19,8 +19,8 @@ const int PWM1_PIN_C = 14;
 
 // 【修正】GPIO 1と3はUSBシリアル通信に使われるため、PWMには使用できません。
 // 代わりに Port A (GPIO 32, 33) など、空いているピンを使用してください。
-const int PWM0_PIN_D = 33; // 元: 3
-const int PWM1_PIN_D = 32; // 元: 1
+const int PWM0_PIN_A = 33; // 元: 3
+const int PWM1_PIN_A = 32; // 元: 1
 
 const int PWM0_PIN_E = 27;
 const int PWM1_PIN_E = 19;
@@ -67,7 +67,7 @@ const char* patternSequence[20] = {
   "D-weak",
   "C-weak","C-weak",
   "D-strong",
-  "C-strong"
+  "C-strong", "E-strong"
 };
 
 const int patternDurations[20] = {
@@ -111,8 +111,10 @@ void stopAllStimulus() {
   testingWeak = false;
   testingStrong = false;
 
-  // ★停止時に none,none を送信
-  sendSerialState("none,none");
+  // 【変更】Setup完了後のみシリアル送信
+  if (setupComplete) {
+    sendSerialState("none,none");
+  }
 }
 
 // PortC のテスト出力
@@ -124,8 +126,8 @@ void applyToPortC(int chop) {
   int ctrlDuty = dutyFromPercent(CTRL_VALUE);
   int chopDuty = dutyFromPercent(chop);
 
-  // 強弱は現在値から判定できるが "portC,weak/strong" 必要ならここで送信
-  sendSerialState(String("portC,") + (chop==userChopStrong ? "strong" : "weak"));
+  // 【変更】Setup時はシリアル通信しない
+  // sendSerialState(String("Left,") + (chop==userChopStrong ? "strong" : "weak"));
 
   ledcWrite(PWM_CH_C_CTRL, ctrlDuty);
   ledcWrite(PWM_CH_C_CHOP, chopDuty);
@@ -140,8 +142,16 @@ void applyPattern(const char* pattern) {
 
   int chop = isStrong ? userChopStrong : userChopWeak;
 
-  // ★パターン開始時に送信（変化があれば）
-  sendSerialState(String("port") + port + "," + (isStrong ? "strong" : "weak"));
+  // 【変更】ポート名を位置名に変換
+  String posName = "";
+  if (port == 'C') posName = "Left";
+  else if (port == 'D') posName = "Center";
+  else if (port == 'E') posName = "Right";
+
+  // 【変更】position,strengthのみ送信（Unknownは送信しない）
+  if (posName != "") {
+    sendSerialState(posName + "," + (isStrong ? "strong" : "weak"));
+  }
 
   if (chop == 0) return;
 
@@ -445,7 +455,7 @@ void setup() {
   ledcAttachPin(PWM0_PIN_C, PWM_CH_C_CTRL);
 
   ledcSetup(PWM_CH_D_CTRL, PWM_CTRL_FREQ, PWM_RES);
-  ledcAttachPin(PWM0_PIN_D, PWM_CH_D_CTRL);
+  ledcAttachPin(PWM0_PIN_A, PWM_CH_D_CTRL);
 
   ledcSetup(PWM_CH_E_CTRL, PWM_CTRL_FREQ, PWM_RES);
   ledcAttachPin(PWM0_PIN_E, PWM_CH_E_CTRL);
@@ -454,15 +464,15 @@ void setup() {
   ledcAttachPin(PWM1_PIN_C, PWM_CH_C_CHOP);
 
   ledcSetup(PWM_CH_D_CHOP, PWM_CHOP_FREQ, PWM_RES);
-  ledcAttachPin(PWM1_PIN_D, PWM_CH_D_CHOP);
+  ledcAttachPin(PWM1_PIN_A, PWM_CH_D_CHOP);
 
   ledcSetup(PWM_CH_E_CHOP, PWM_CHOP_FREQ, PWM_RES);
   ledcAttachPin(PWM1_PIN_E, PWM_CH_E_CHOP);
 
   drawSetupUI();
 
-  // 初期状態
-  sendSerialState("none,none");
+  // 【変更】初期状態のシリアル送信は削除
+  // sendSerialState("none,none");
 }
 
 void loop() {
