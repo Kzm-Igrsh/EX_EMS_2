@@ -57,16 +57,16 @@ String lastSerialState = "";
 // 20パターン
 const char* patternSequence[20] = {
   "C-weak", "C-strong",
-  "E-weak", "D-strong", 
+  "E-weak", "A-strong", 
   "C-weak", "E-strong", 
-  "D-weak",
-  "D-weak", "D-weak",
+  "A-weak",
+  "A-weak", "A-weak",
   "E-strong", "E-strong",
   "C-strong",
   "E-weak", "E-strong",
-  "D-weak",
+  "A-weak",
   "C-weak","C-weak",
-  "D-strong",
+  "A-strong",
   "C-strong", "E-strong"
 };
 
@@ -78,15 +78,13 @@ const int patternDurations[20] = {
 };
 
 const int patternIntervals[20] = {
-  400,250,150,350,50,
-  450,200,300,0,100,
-  250,400,150,300,100,
-  450,50,350,200,0
+  1200,750,450,1150,150,
+  450,100,3500,0,900,
+  250,1400,150,700,1400,
+  1450,50,950,200,0
 };
 
 const int totalTrials = 20;
-
-// ========= 関数 =========
 
 int dutyFromPercent(int v) {
   return map(v, 0, 100, 0, (1 << PWM_RES) - 1);
@@ -137,7 +135,7 @@ void applyToPortC(int chop) {
 void applyPattern(const char* pattern) {
   stopAllStimulus();
 
-  char port = pattern[0];         // C / D / E
+  char port = pattern[0];         // C / A / E
   bool isStrong = strstr(pattern, "strong") != NULL;
 
   int chop = isStrong ? userChopStrong : userChopWeak;
@@ -145,7 +143,7 @@ void applyPattern(const char* pattern) {
   // 【変更】ポート名を位置名に変換
   String posName = "";
   if (port == 'C') posName = "Left";
-  else if (port == 'D') posName = "Center";
+  else if (port == 'A') posName = "Center"; // 【修正】D -> A に変更
   else if (port == 'E') posName = "Right";
 
   // 【変更】position,strengthのみ送信（Unknownは送信しない）
@@ -161,7 +159,8 @@ void applyPattern(const char* pattern) {
   if (port == 'C') {
     ledcWrite(PWM_CH_C_CTRL, ctrlDuty);
     ledcWrite(PWM_CH_C_CHOP, chopDuty);
-  } else if (port == 'D') {
+  } else if (port == 'A') { // 【修正】D -> A に変更
+    // 変数名は PWM_CH_D_... のままでも、setup()でPin Aに割り当てられているので動きます
     ledcWrite(PWM_CH_D_CTRL, ctrlDuty);
     ledcWrite(PWM_CH_D_CHOP, chopDuty);
   } else if (port == 'E') {
