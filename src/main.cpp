@@ -11,6 +11,8 @@ void applyToPortC(int chop);
 void applyPattern(const char* pattern);
 void sendSerialState(String state);
 int dutyFromPercent(int v);
+void applyFinalTestPattern(int step);  // 【追加】
+void updateFinalTest();  // 【追加】
 
 
 
@@ -44,6 +46,11 @@ int userChopWeak = 0;
 int userChopStrong = 0;
 bool testingWeak = false;
 bool testingStrong = false;
+
+// 【追加】DONE後のテストシーケンス用
+bool runningFinalTest = false;
+int finalTestStep = 0;
+unsigned long finalTestStepStart = 0;
 
 // パターン実行用
 bool patternRunning = false;
@@ -295,8 +302,12 @@ void handleSetupTouch() {
 
   if (y >= 200 && y <= 235 && x >= 85 && x <= 235) {
     stopAllStimulus();
-    setupComplete = true;
-    drawPatternUI();
+    
+    // 【変更】最終テストシーケンス開始
+    runningFinalTest = true;
+    finalTestStep = 0;
+    finalTestStepStart = millis();
+    applyFinalTestPattern(0);
     return;
   }
 
@@ -441,6 +452,49 @@ void updatePattern() {
   }
 }
 
+// ========= 最終テストシーケンス実行
+void applyFinalTestPattern(int step) {
+  int chop = (step % 2 == 0) ? userChopWeak : userChopStrong;
+  int ctrlDuty = dutyFromPercent(CTRL_VALUE);
+  int chopDuty = dutyFromPercent(chop);
+
+  stopAllStimulus();
+
+  if (step == 0 || step == 1) { // Port C
+    ledcWrite(PWM_CH_C_CTRL, ctrlDuty);
+    ledcWrite(PWM_CH_C_CHOP, chopDuty);
+  } else if (step == 2 || step == 3) { // Port A
+    ledcWrite(PWM_CH_D_CTRL, ctrlDuty);
+    ledcWrite(PWM_CH_D_CHOP, chopDuty);
+  } else if (step == 4 || step == 5) { // Port E
+    ledcWrite(PWM_CH_E_CTRL, ctrlDuty);
+    ledcWrite(PWM_CH_E_CHOP, chopDuty);
+  }
+}
+
+// 【追加】最終テストシーケンス更新
+void updateFinalTest() {
+  if (!runningFinalTest) return;
+
+  unsigned long elapsed = millis() - finalTestStepStart;
+  
+  if (elapsed >= 1000) { // 各刺激1秒
+    finalTestStep++;
+    
+    if (finalTestStep >= 6) { // C-weak, C-strong, A-weak, A-strong, E-weak, E-strong
+      runningFinalTest = false;
+      finalTestStep = 0;
+      stopAllStimulus();
+      setupComplete = true;
+      drawPatternUI();
+      return;
+    }
+    
+    finalTestStepStart = millis();
+    applyFinalTestPattern(finalTestStep);
+  }
+}
+
 // ========= setup / loop =========
 
 void setup() {
@@ -478,7 +532,11 @@ void loop() {
   M5.update();
 
   if (!setupComplete) {
-    handleSetupTouch();
+    if (runningFinalTest) {
+      updateFinalTest();
+    } else {
+      handleSetupTouch();
+    }
   } else {
     handlePatternTouch();
     updatePattern();
